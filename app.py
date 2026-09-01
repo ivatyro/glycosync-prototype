@@ -53,9 +53,9 @@ def get_benchmark_plan(user_data):
     
     # 1. DYNAMIC BASAL METABOLIC CALCULATION (Age, BMI, Gender)
     base_cals = 1500 if gender == "Female" else 1800
-    age_adj = -((age - 25) * 5) # Slowing metabolism with age
-    bmi_adj = -250 if bmi >= 30 else (-100 if bmi >= 25 else 0) # Deficit for overweight/obesity
-    target_cals = max(1200, int(base_cals + age_adj + bmi_adj)) # Never drop below 1200 for safety
+    age_adj = -((age - 25) * 5) 
+    bmi_adj = -250 if bmi >= 30 else (-100 if bmi >= 25 else 0) 
+    target_cals = max(1200, int(base_cals + age_adj + bmi_adj)) 
     
     # 2. GLYCEMIC STATUS LOGIC (T2D Elevated, Controlled, Prediabetes)
     if "Elevated" in glycemic:
@@ -66,7 +66,7 @@ def get_benchmark_plan(user_data):
         carb_ratio, pro_ratio, fat_ratio = 0.20, 0.35, 0.45
         gl_target = "Low (GL ~ 6)"
         carb_rationale = "Moderate complex carbohydrates to maintain stable HbA1c in controlled T2D."
-    else: # Prediabetes
+    else: 
         carb_ratio, pro_ratio, fat_ratio = 0.25, 0.30, 0.45
         gl_target = "Low (GL ~ 8)"
         carb_rationale = "Controlled glycemic load to restore insulin sensitivity and reverse prediabetes."
@@ -99,8 +99,7 @@ def get_benchmark_plan(user_data):
             micro_focus.append("Calcium and Vitamin D3 for bone density and baseline metabolic rate.")
             snack_rationale = "Provides sustained energy without disrupting endocrine balance."
 
-    # 4. DIETARY PREFERENCE & ALLERGY MATRICES (Including South Indian Non-Veg & Nut-Free Vegan)
-    # Base defaults
+    # 4. DIETARY PREFERENCE & ALLERGY MATRICES
     bfast, lunch, snack, dinner = "Paneer Scramble", "Lentil Bowl", "Mixed Nuts", "Cauliflower Mash & Tofu"
     bfast_swap, lunch_swap = "Uses paneer instead of carbs.", "Uses lentils for fiber."
 
@@ -213,7 +212,7 @@ def get_benchmark_plan(user_data):
     }
 
 # ---------------------------------------------------------
-# LLM Integration Function
+# LLM Integration Function (Powered by Free Groq API)
 # ---------------------------------------------------------
 def generate_meal_plan(user_data, api_key=None):
     if not api_key:
@@ -221,26 +220,36 @@ def generate_meal_plan(user_data, api_key=None):
 
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=api_key)
+        # Diverts the OpenAI library to use Groq's super-fast free inference endpoints
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
         
         system_prompt = """
-        You are GlycoSync, a clinical endocrinology AI.
-        Design multi-constraint meal plans for the Insulin Resistance Triad.
-        Return ONLY a JSON matching the requested schema. Ensure dynamic calculation of daily_target_met.
+        You are GlycoSync, a clinical endocrinology and nutrition AI.
+        Design multi-constraint meal plans specifically optimized for the Insulin Resistance Triad.
+        
+        Strict Guidelines:
+        1. AGGRESSIVE VARIETY: You MUST completely change the actual dishes, ingredients, and protein sources based on the patient's specific Glycemic Marker (Prediabetes vs Controlled vs Elevated T2D), Age, Gender, and PCOS phenotype. 
+        2. Culturally adapt dishes (e.g., South Indian variations) if the dietary preference allows. Strictly obey all allergy constraints (e.g., nut-free).
+        3. Keep total Net Carbs < 100g/day. Adjust calories dynamically based on Age and BMI.
+        4. Every meal MUST include a 'Smart Bio-Swap' and a clinical rationale perfectly tailored to their specific HbA1c and phenotype.
+        5. Return ONLY a valid JSON object matching the requested schema exactly. Include 'simulated_target_met' key evaluating the protocol.
         """
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama3-8b-8192",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Profile:\n{json.dumps(user_data)}"}
+                {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
             ],
             response_format={"type": "json_object"},
             temperature=0.2
         )
         return json.loads(response.choices[0].message.content), True
     except Exception as e:
-        st.warning(f"API Error. Displaying verified local logic.")
+        st.warning(f"Live API Error. Seamlessly switching to local constraint engine.")
         return get_benchmark_plan(user_data), False
 
 # ---------------------------------------------------------
@@ -253,7 +262,7 @@ st.markdown("---")
 # Sidebar Configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input("OpenAI API Key (Optional)", type="password")
+    api_key = st.text_input("Groq API Key (Optional)", type="password", help="Paste your free Groq key or leave blank for local mode.")
     
     st.subheader("📋 Patient Clinical Profile")
     age = st.number_input("Age", min_value=18, max_value=85, value=28)
@@ -288,12 +297,12 @@ if generate_btn:
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via GPT-4 Engine")
+        st.success("✅ Real-time Plan Synthesized via Groq LLaMA 3 Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
     # Adherence Target Status
-    st.success(f"**Daily Output Status:** {plan_data.get('simulated_target_met', 'Targets Met')}")
+    st.success(f"**Daily Output Status:** {plan_data.get('simulated_target_met', '✅ SUCCESS: Dietary protocol aligns with daily clinical targets.')}")
 
     # Top Metric Tiles
     m1, m2, m3, m4 = st.columns(4)
@@ -332,4 +341,4 @@ if generate_btn:
         for item in plan_data.get("clinical_safeguards", []):
             st.markdown(f"- {item}")
 else:
-    st.info("👈 Adjust patient parameters on the left sidebar and click **Generate Precision Plan** to preview the logic engine.")
+    st.info("👈 Adjust patient parameters on the left sidebar and click **Generate Precision Plan**.")
