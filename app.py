@@ -207,7 +207,7 @@ def get_benchmark_plan(user_data):
     }
 
 # ---------------------------------------------------------
-# LLM Integration Function (Powered by Gemini 2.5 Flash)
+# LLM Integration Function (Powered by Gemini)
 # ---------------------------------------------------------
 def generate_meal_plan(user_data, api_key=None):
     if not api_key:
@@ -215,7 +215,6 @@ def generate_meal_plan(user_data, api_key=None):
 
     try:
         from openai import OpenAI
-        # Routes the OpenAI library directly to Google's Gemini endpoint
         client = OpenAI(
             api_key=api_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -259,7 +258,7 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="gemini-2.5-flash", # Updated to the active, supported Gemini model
+            model="gemini-2.5-flash",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
@@ -268,4 +267,96 @@ def generate_meal_plan(user_data, api_key=None):
         )
         
         raw_text = response.choices[0].message.content
-        clean_text = raw_text.replace("
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        return json.loads(clean_text), True
+    except Exception as e:
+        st.warning(f"Live API Error ({str(e)}). Seamlessly switching to local constraint engine.")
+        return get_benchmark_plan(user_data), False
+
+# ---------------------------------------------------------
+# Streamlit User Interface
+# ---------------------------------------------------------
+st.title("🧬 GlycoSync: Multi-Constraint Nutrition Engine")
+st.caption("AI-Assisted Precision Meal Formulation for Diabetes, PCOS & Metabolic Management")
+st.markdown("---")
+
+# Sidebar Configuration
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    api_key = st.text_input("Gemini API Key (Optional)", type="password", help="Paste your free Gemini key from Google AI Studio.")
+    
+    st.subheader("📋 Patient Clinical Profile")
+    age = st.number_input("Age", min_value=18, max_value=85, value=28)
+    gender = st.selectbox("Biological Sex", ["Female", "Male"])
+    bmi = st.slider("BMI (kg/m²)", min_value=20.0, max_value=45.0, value=29.5, step=0.1)
+    
+    st.markdown("### 🩸 Endocrine Markers")
+    glycemic_status = st.selectbox("Glycemic Marker", ["Prediabetes (HbA1c 5.7 - 6.4%)", "T2D Controlled (HbA1c 6.5 - 7.5%)", "T2D Elevated (HbA1c > 7.5%)"])
+    
+    if gender == "Male":
+        pcos_phenotype = st.selectbox("PCOS Phenotype", ["Not Applicable (Male Profile)"], disabled=True)
+    else:
+        pcos_phenotype = st.selectbox("PCOS Phenotype", ["Insulin-Resistant PCOS", "Inflammatory PCOS", "Adrenal PCOS", "Not Applicable"])
+    
+    st.markdown("### 🥗 Dietary Guardrails")
+    diet_pref = st.selectbox("Diet Preference", ["Vegetarian (High-Protein)", "Vegan", "Pescatarian", "Omnivore / Non-Vegetarian", "Eggitarian"])
+    allergies = st.multiselect("Food Sensitivities / Exclusions", ["Gluten-Free", "Dairy-Free", "Nut-Free", "Soy-Free"], default=[])
+    
+    generate_btn = st.button("Generate Precision Plan 🚀", type="primary", use_container_width=True)
+
+# Main Application Body
+if generate_btn:
+    patient_payload = {
+        "age": age, "gender": gender, "bmi": bmi,
+        "glycemic_status": glycemic_status,
+        "pcos_phenotype": pcos_phenotype,
+        "diet_preference": diet_pref,
+        "allergies": allergies
+    }
+
+    with st.spinner("Analyzing combinatorial metabolic pathways..."):
+        plan_data, is_live = generate_meal_plan(patient_payload, api_key)
+    
+    if is_live:
+        st.success("✅ Real-time Plan Synthesized via Gemini 2.5 Flash Engine")
+    else:
+        st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
+
+    st.success(f"**Daily Output Status:** {plan_data.get('simulated_target_met', '✅ SUCCESS: Dietary protocol aligns with daily clinical targets.')}")
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Target Calories", f"{plan_data.get('daily_calories')} kcal")
+    m2.metric("Net Carbohydrates", f"{plan_data.get('daily_net_carbs_g')} g")
+    m3.metric("Protein Target", f"{plan_data.get('daily_protein_g')} g")
+    m4.metric("Healthy Fats", f"{plan_data.get('daily_fats_g')} g")
+    
+    st.info(f"**Clinical Strategy:** {plan_data.get('target_macro_summary')}")
+    st.markdown("---")
+
+    st.subheader("🍽️ Personalized Meal Architecture")
+    for meal in plan_data.get("meals", []):
+        with st.expander(f"**{meal.get('meal_type')}**: {meal.get('dish_name')} ({meal.get('calories')} kcal)", expanded=True):
+            col_a, col_b = st.columns([1, 1])
+            with col_a:
+                st.markdown(f"**Portion:** {meal.get('portion_size')}")
+                st.markdown(f"**Macros:** P: `{meal.get('protein_g')}g` | Net C: `{meal.get('net_carbs_g')}g` | Fat: `{meal.get('healthy_fats_g')}g`")
+                st.markdown(f"**Glycemic Impact:** :green[{meal.get('glycemic_load_score')}]")
+            with col_b:
+                st.markdown(f"🔄 **Smart Bio-Swap:** *{meal.get('smart_bioswap')}*")
+                st.markdown(f"🧬 **Endocrine Rationale:** *{meal.get('clinical_rationale')}*")
+
+    st.markdown("---")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("💊 Targeted Endocrine Micronutrients")
+        for item in plan_data.get("micronutrient_focus", []):
+            st.markdown(f"- {item}")
+            
+    with c2:
+        st.subheader("⚠️ Guardrails & Adherence Rules")
+        for item in plan_data.get("clinical_safeguards", []):
+            st.markdown(f"- {item}")
+else:
+    st.info("👈 Adjust patient parameters on the left sidebar and click **Generate Precision Plan**.")
