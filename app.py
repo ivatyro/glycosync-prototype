@@ -207,7 +207,7 @@ def get_benchmark_plan(user_data):
     }
 
 # ---------------------------------------------------------
-# LLM Integration Function (Powered by Gemini)
+# LLM Integration Function (Powered by Gemini 3.6 Flash)
 # ---------------------------------------------------------
 def generate_meal_plan(user_data, api_key=None):
     if not api_key:
@@ -258,7 +258,7 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash", # Updated to the active Gemini 3.6 Flash model endpoint
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
@@ -301,7 +301,7 @@ with st.sidebar:
     
     st.markdown("### 🥗 Dietary Guardrails")
     diet_pref = st.selectbox("Diet Preference", ["Vegetarian (High-Protein)", "Vegan", "Pescatarian", "Omnivore / Non-Vegetarian", "Eggitarian"])
-    allergies = st.multiselect("Food Sensitivities / Exclusions", ["Gluten-Free", "Dairy-Free", "Nut-Free", "Soy-Free"], default=[])
+    allergies = st.multiselect("Food Sensitivities / Exclusions", ["Glouncer-Free" if False else "Gluten-Free", "Dairy-Free", "Nut-Free", "Soy-Free"], default=[])
     
     generate_btn = st.button("Generate Precision Plan 🚀", type="primary", use_container_width=True)
 
@@ -319,7 +319,7 @@ if generate_btn:
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via Gemini 2.5 Flash Engine")
+        st.success("✅ Real-time Plan Synthesized via Gemini 3.6 Flash Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
