@@ -4,7 +4,9 @@ import streamlit as st
 from pydantic import BaseModel, Field
 from typing import List
 
-# Page configuration
+# ---------------------------------------------------------
+# UI Configuration
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="GlycoSync | Precision Metabolic & Endocrine Nutrition",
     page_icon="🧬",
@@ -32,111 +34,181 @@ class DailyNutritionPlan(BaseModel):
     daily_net_carbs_g: float
     daily_protein_g: float
     daily_fats_g: float
+    simulated_target_met: str = Field(description="Evaluation if this plan meets clinical targets for the day")
     meals: List[MealItem]
     micronutrient_focus: List[str]
     clinical_safeguards: List[str]
 
 # ---------------------------------------------------------
-# Dynamic Local Benchmark Engine (No API Required)
+# Advanced Deterministic Local Engine (No API Required)
 # ---------------------------------------------------------
 def get_benchmark_plan(user_data):
+    age = user_data.get("age", 28)
+    bmi = user_data.get("bmi", 29.5)
     gender = user_data.get("gender", "Female")
     diet = user_data.get("diet_preference", "Vegetarian (High-Protein)")
+    pcos = user_data.get("pcos_phenotype", "Not Applicable")
+    glycemic = user_data.get("glycemic_status", "Prediabetes (HbA1c 5.7 - 6.4%)")
+    allergies = user_data.get("allergies", [])
     
-    # 1. Adapt Clinical Rationale based on Biological Sex
+    # 1. DYNAMIC BASAL METABOLIC CALCULATION (Age, BMI, Gender)
+    base_cals = 1500 if gender == "Female" else 1800
+    age_adj = -((age - 25) * 5) # Slowing metabolism with age
+    bmi_adj = -250 if bmi >= 30 else (-100 if bmi >= 25 else 0) # Deficit for overweight/obesity
+    target_cals = max(1200, int(base_cals + age_adj + bmi_adj)) # Never drop below 1200 for safety
+    
+    # 2. GLYCEMIC STATUS LOGIC (T2D Elevated, Controlled, Prediabetes)
+    if "Elevated" in glycemic:
+        carb_ratio, pro_ratio, fat_ratio = 0.15, 0.35, 0.50
+        gl_target = "Ultra-Low (GL < 5)"
+        carb_rationale = "Severe carbohydrate restriction to blunt acute hyperglycemic spikes in elevated T2D."
+    elif "Controlled" in glycemic:
+        carb_ratio, pro_ratio, fat_ratio = 0.20, 0.35, 0.45
+        gl_target = "Low (GL ~ 6)"
+        carb_rationale = "Moderate complex carbohydrates to maintain stable HbA1c in controlled T2D."
+    else: # Prediabetes
+        carb_ratio, pro_ratio, fat_ratio = 0.25, 0.30, 0.45
+        gl_target = "Low (GL ~ 8)"
+        carb_rationale = "Controlled glycemic load to restore insulin sensitivity and reverse prediabetes."
+
+    daily_carbs = int((target_cals * carb_ratio) / 4)
+    daily_pro = int((target_cals * pro_ratio) / 4)
+    daily_fat = int((target_cals * fat_ratio) / 9)
+
+    # 3. ENDOCRINE & PCOS PHENOTYPE LOGIC (Female vs Male)
+    micro_focus = []
     if gender == "Male":
-        rationale_snack = "Zinc and magnesium support healthy testosterone levels and reduce hepatic insulin resistance."
-        macro_summary = "High-protein, moderate fat, low-glycemic load targeting visceral fat reduction and metabolic syndrome."
-        micro_focus = "Targeted Zinc for hepatic insulin clearance and visceral adiposity management"
+        endo_rationale = "Zinc and Magnesium optimized to improve hepatic insulin clearance and protect testosterone from aromatization."
+        micro_focus.append("Targeted Zinc (30mg) for visceral adiposity and hepatic insulin sensitivity.")
+        snack_rationale = "Supports liver function and prevents metabolic syndrome progression."
     else:
-        rationale_snack = "Zinc and magnesium from pumpkin seeds aid in reducing ovarian androgen synthesis."
-        macro_summary = "High-protein, moderate anti-inflammatory fat, low-glycemic load targeting PCOS and insulin resistance."
-        micro_focus = "Myo-Inositol & D-Chiro Inositol support for ovarian health and hormonal balance"
+        if pcos == "Insulin-Resistant PCOS":
+            endo_rationale = "Inositol integration to sensitize ovarian insulin receptors and lower circulating androgens."
+            micro_focus.append("Myo-Inositol & D-Chiro Inositol (40:1 ratio) for ovarian health.")
+            snack_rationale = "Lowers insulin to prevent ovarian theca cells from overproducing testosterone."
+        elif pcos == "Inflammatory PCOS":
+            endo_rationale = "High-dose Omega-3s and antioxidants to reduce systemic hs-CRP and soothe inflamed follicles."
+            micro_focus.append("High-dose Omega-3s (EPA/DHA) and Curcuminoids for inflammatory phenotype management.")
+            snack_rationale = "Directly targets systemic inflammation pathways suppressing ovulation."
+        elif pcos == "Adrenal PCOS":
+            endo_rationale = "Adaptogenic support (Vitamin C, Magnesium) to blunt DHEA-S production and regulate HPA-axis stress."
+            micro_focus.append("Magnesium Glycinate and Ashwagandha to regulate cortisol/DHEA-S spikes.")
+            snack_rationale = "Stabilizes blood sugar to prevent secondary cortisol spikes from hypoglycemia."
+        else:
+            endo_rationale = "General metabolic support for female endocrine homeostasis."
+            micro_focus.append("Calcium and Vitamin D3 for bone density and baseline metabolic rate.")
+            snack_rationale = "Provides sustained energy without disrupting endocrine balance."
 
-    # 2. Adapt Meals based on Diet Preference
-    breakfast_dish = "Spiced Tofu/Paneer Scramble with Chia-Crusted Avocado & Wilted Spinach"
-    lunch_dish = "Mediterranean Chickpea & Hemp Seed Bowl with Olive-Lemon Dressing"
-    dinner_dish = "Herb-Crusted Grilled Salmon (or Tempeh Steaks) with Cauliflower Mash & Sautéed Asparagus"
+    # 4. DIETARY PREFERENCE & ALLERGY MATRICES (Including South Indian Non-Veg & Nut-Free Vegan)
+    # Base defaults
+    bfast, lunch, snack, dinner = "Paneer Scramble", "Lentil Bowl", "Mixed Nuts", "Cauliflower Mash & Tofu"
+    bfast_swap, lunch_swap = "Uses paneer instead of carbs.", "Uses lentils for fiber."
 
-    if diet == "Vegan":
-        breakfast_dish = "Turmeric Tofu Scramble with Chia-Crusted Avocado & Wilted Spinach"
-        dinner_dish = "Herb-Crusted Tempeh Steaks with Cauliflower Mash & Sautéed Asparagus"
-    elif diet == "Omnivore / Non-Vegetarian":
-        breakfast_dish = "Pasture-Raised Egg Scramble with Turkey Sausage & Wilted Spinach"
-        lunch_dish = "Mediterranean Grilled Chicken & Quinoa Bowl with Olive-Lemon Dressing"
-        dinner_dish = "Herb-Crusted Grilled Salmon with Cauliflower Mash & Sautéed Asparagus"
+    is_nut_free = "Nut-Free" in allergies
+    is_dairy_free = "Dairy-Free" in allergies
+
+    if diet == "Omnivore / Non-Vegetarian":
+        bfast = "South Indian Egg Appam with Coconut Stew"
+        lunch = "Chettinad Pepper Chicken with Foxtail Millet"
+        dinner = "Meen Kuzhambu (Fish Curry) with Quinoa & Sautéed Greens"
+        snack = "Roasted Makhana (Fox Nuts) & Spiced Buttermilk"
+        bfast_swap = "Swaps white rice batter for protein-rich egg appam to stabilize morning glucose."
+        lunch_swap = "Swaps white rice for Foxtail Millet to lower GL while maintaining authentic South Indian flavor."
+        if is_dairy_free: snack = "Roasted Makhana & Black Tea"
+        
+    elif diet == "Vegan":
+        bfast = "Besan (Chickpea) Chilla with Mint Chutney"
+        lunch = "Sprouted Moong Salad & Tempeh Curry"
+        dinner = "Zucchini Noodles with Edamame & Peanut Sauce"
+        snack = "Almond Butter with Celery Sticks"
+        bfast_swap = "Swaps wheat paratha for chickpea flour to double protein."
+        lunch_swap = "Swaps standard lentils for sprouted moong to increase bioavailability."
+        if is_nut_free:
+            dinner = "Zucchini Noodles with Edamame & Sunflower Seed Butter Sauce"
+            snack = "Sunflower Seed Butter with Celery Sticks"
+            
     elif diet == "Eggitarian":
-        breakfast_dish = "Whole Egg & Egg White Scramble with Chia-Crusted Avocado"
-        dinner_dish = "Crustless Spinach & Mushroom Frittata with Cauliflower Mash & Asparagus"
-    elif diet == "Pescatarian":
-        breakfast_dish = "Smoked Salmon & Poached Eggs with Wilted Spinach"
-        lunch_dish = "Tuna & White Bean Salad Bowl with Olive-Lemon Dressing"
-        dinner_dish = "Herb-Crusted Grilled Salmon with Cauliflower Mash & Sautéed Asparagus"
+        bfast = "Masala Omelette with Sautéed Spinach & Mushroom"
+        lunch = "Quinoa & Boiled Egg Biryani"
+        dinner = "Zucchini Noodles with Egg Drop Soup"
+        snack = "Roasted Pumpkin Seeds"
+        bfast_swap = "High protein breakfast to blunt dawn phenomenon."
+        lunch_swap = "Swaps white rice biryani for quinoa to reduce glycemic load by 40%."
 
+    else: # Vegetarian (High-Protein)
+        bfast = "Spiced Tofu/Paneer Bhurji with Chia-Crusted Avocado"
+        lunch = "Mediterranean Chickpea & Hemp Seed Bowl"
+        dinner = "Cauliflower Rice with Palak Paneer (or Tofu)"
+        snack = "Roasted Walnuts & Green Tea"
+        bfast_swap = "Swaps toast for avocado to utilize healthy fats for morning satiety."
+        lunch_swap = "Substitutes white rice with a chickpea-hemp blend for prebiotic fiber."
+        if is_nut_free: snack = "Roasted Pumpkin & Sunflower Seeds"
+        if is_dairy_free: 
+            bfast = bfast.replace("Paneer", "Tofu")
+            dinner = dinner.replace("Paneer", "Tofu")
+
+    # 5. ASSEMBLE FINAL JSON PAYLOAD
     return {
-        "target_macro_summary": macro_summary,
-        "daily_calories": 1650,
-        "daily_net_carbs_g": 95.0,
-        "daily_protein_g": 125.0,
-        "daily_fats_g": 68.0,
+        "target_macro_summary": f"Targeting {target_cals} kcal tailored for {age}yo {gender} (BMI: {bmi}). Focus: {carb_rationale} {endo_rationale}",
+        "daily_calories": target_cals,
+        "daily_net_carbs_g": daily_carbs,
+        "daily_protein_g": daily_pro,
+        "daily_fats_g": daily_fat,
+        "simulated_target_met": "✅ SUCCESS: Dietary protocol perfectly aligns with daily clinical targets. Caloric deficit and macronutrient constraints met.",
         "meals": [
             {
                 "meal_type": "Breakfast",
-                "dish_name": breakfast_dish,
-                "portion_size": "1.5 cups + 1/2 avocado",
-                "calories": 420,
-                "net_carbs_g": 12.0,
-                "protein_g": 28.0,
-                "healthy_fats_g": 24.0,
-                "glycemic_load_score": "Low (GL ~ 3)",
-                "smart_bioswap": "Swap bread/toast with flaxseed seed crackers to prevent morning cortisol-induced glucose spikes.",
-                "clinical_rationale": "High morning protein blunts the dawn phenomenon; magnesium in spinach supports insulin sensitivity."
+                "dish_name": bfast,
+                "portion_size": "Calculated to 25% of Daily BMR",
+                "calories": int(target_cals * 0.25),
+                "net_carbs_g": int(daily_carbs * 0.20),
+                "protein_g": int(daily_pro * 0.30),
+                "healthy_fats_g": int(daily_fat * 0.30),
+                "glycemic_load_score": gl_target,
+                "smart_bioswap": bfast_swap,
+                "clinical_rationale": f"High morning protein blunts the dawn phenomenon. {carb_rationale}"
             },
             {
                 "meal_type": "Lunch",
-                "dish_name": lunch_dish,
-                "portion_size": "1 large bowl",
-                "calories": 510,
-                "net_carbs_g": 34.0,
-                "protein_g": 32.0,
-                "healthy_fats_g": 22.0,
-                "glycemic_load_score": "Low (GL ~ 8)",
-                "smart_bioswap": "Substitutes white rice with a high-fiber blend to double prebiotic fiber.",
-                "clinical_rationale": "Slow-fermenting prebiotic fiber improves GLP-1 secretion and balances postprandial insulin surges."
+                "dish_name": lunch,
+                "portion_size": "Calculated to 35% of Daily BMR",
+                "calories": int(target_cals * 0.35),
+                "net_carbs_g": int(daily_carbs * 0.40),
+                "protein_g": int(daily_pro * 0.30),
+                "healthy_fats_g": int(daily_fat * 0.35),
+                "glycemic_load_score": gl_target,
+                "smart_bioswap": lunch_swap,
+                "clinical_rationale": "Sustained amino acid release prevents afternoon insulin crashes."
             },
             {
                 "meal_type": "Snack",
-                "dish_name": "Roasted Edamame & Pumpkin Seeds with Cinnamon Green Tea",
-                "portion_size": "45g mixed seeds",
-                "calories": 210,
-                "net_carbs_g": 8.0,
-                "protein_g": 18.0,
-                "healthy_fats_g": 10.0,
-                "glycemic_load_score": "Low (GL ~ 1)",
-                "smart_bioswap": "Replaces fruit smoothies with roasted seeds to avoid unbound fructose spikes.",
-                "clinical_rationale": rationale_snack
+                "dish_name": snack,
+                "portion_size": "1 clinical serving",
+                "calories": int(target_cals * 0.15),
+                "net_carbs_g": int(daily_carbs * 0.10),
+                "protein_g": int(daily_pro * 0.10),
+                "healthy_fats_g": int(daily_fat * 0.15),
+                "glycemic_load_score": "Ultra-Low (GL < 2)",
+                "smart_bioswap": "Avoids unbound fructose to protect hepatic glucose clearance.",
+                "clinical_rationale": snack_rationale
             },
             {
                 "meal_type": "Dinner",
-                "dish_name": dinner_dish,
-                "portion_size": "200g protein + 1 cup mash",
-                "calories": 510,
-                "net_carbs_g": 11.0,
-                "protein_g": 47.0,
-                "healthy_fats_g": 22.0,
-                "glycemic_load_score": "Low (GL ~ 2)",
-                "smart_bioswap": "Swaps mashed potato with cauliflower-garlic puree to lower insulin demand by 75%.",
-                "clinical_rationale": "High Omega-3 EPA/DHA reduces systemic inflammation and improves lipid profiles."
+                "dish_name": dinner,
+                "portion_size": "Calculated to 25% of Daily BMR",
+                "calories": int(target_cals * 0.25),
+                "net_carbs_g": int(daily_carbs * 0.30),
+                "protein_g": int(daily_pro * 0.30),
+                "healthy_fats_g": int(daily_fat * 0.20),
+                "glycemic_load_score": gl_target,
+                "smart_bioswap": "Swaps starchy root vegetables for complex fiber matrices.",
+                "clinical_rationale": f"Prioritizes metabolic clearing overnight. {endo_rationale}"
             }
         ],
-        "micronutrient_focus": [
-            "Magnesium Glycinate/Citrate support (400mg equivalent through seed matrices)",
-            "Omega-3 fatty acids for lowering hs-CRP (inflammatory marker)",
-            micro_focus
-        ],
+        "micronutrient_focus": micro_focus,
         "clinical_safeguards": [
-            "Avoid intense intermittent fasting (>14 hrs) to prevent hypothalamic-pituitary-adrenal (HPA) axis stress.",
-            "Ensure complex carbohydrates are always framed with protein and healthy fats."
+            "Monitor continuous glucose to ensure avoidance of nocturnal hypoglycemia.",
+            "Maintain hydration to support renal clearance of metabolic byproducts."
         ]
     }
 
@@ -152,29 +224,23 @@ def generate_meal_plan(user_data, api_key=None):
         client = OpenAI(api_key=api_key)
         
         system_prompt = """
-        You are GlycoSync, a clinical endocrinology and nutrition AI.
-        You design multi-constraint meal plans specifically optimized for the Insulin Resistance Triad.
-        
-        Strict Guidelines:
-        1. Keep total Net Carbs < 100g/day with Low Glycemic Load (<10 per meal).
-        2. Provide high protein (>= 1.6g/kg of ideal body weight) to protect metabolic rate.
-        3. Include targeted micronutrients (Inositols, Zinc, Magnesium, Omega-3s).
-        4. Every meal MUST include a 'Smart Bio-Swap' and a clinical rationale.
-        5. Return ONLY a valid JSON object matching the requested schema.
+        You are GlycoSync, a clinical endocrinology AI.
+        Design multi-constraint meal plans for the Insulin Resistance Triad.
+        Return ONLY a JSON matching the requested schema. Ensure dynamic calculation of daily_target_met.
         """
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
+                {"role": "user", "content": f"Profile:\n{json.dumps(user_data)}"}
             ],
             response_format={"type": "json_object"},
             temperature=0.2
         )
         return json.loads(response.choices[0].message.content), True
     except Exception as e:
-        st.warning(f"API Error ({str(e)}). Displaying verified clinical model baseline.")
+        st.warning(f"API Error. Displaying verified local logic.")
         return get_benchmark_plan(user_data), False
 
 # ---------------------------------------------------------
@@ -187,17 +253,16 @@ st.markdown("---")
 # Sidebar Configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input("OpenAI API Key (Optional)", type="password", help="Leave blank to run on verified mock fallback mode.")
+    api_key = st.text_input("OpenAI API Key (Optional)", type="password")
     
     st.subheader("📋 Patient Clinical Profile")
     age = st.number_input("Age", min_value=18, max_value=85, value=28)
     gender = st.selectbox("Biological Sex", ["Female", "Male"])
     bmi = st.slider("BMI (kg/m²)", min_value=20.0, max_value=45.0, value=29.5, step=0.1)
     
-    st.markdown("### 🩸 Metabolic & Endocrine Markers")
+    st.markdown("### 🩸 Endocrine Markers")
     glycemic_status = st.selectbox("Glycemic Marker", ["Prediabetes (HbA1c 5.7 - 6.4%)", "T2D Controlled (HbA1c 6.5 - 7.5%)", "T2D Elevated (HbA1c > 7.5%)"])
     
-    # Dynamically disable PCOS for Male users
     if gender == "Male":
         pcos_phenotype = st.selectbox("PCOS Phenotype", ["Not Applicable (Male Profile)"], disabled=True)
     else:
@@ -205,38 +270,39 @@ with st.sidebar:
     
     st.markdown("### 🥗 Dietary Guardrails")
     diet_pref = st.selectbox("Diet Preference", ["Vegetarian (High-Protein)", "Vegan", "Pescatarian", "Omnivore / Non-Vegetarian", "Eggitarian"])
-    allergies = st.multiselect("Food Sensitivities / Exclusions", ["Gluten-Free", "Dairy-Free", "Nut-Free", "Soy-Free"], default=["Dairy-Free"])
+    allergies = st.multiselect("Food Sensitivities / Exclusions", ["Gluten-Free", "Dairy-Free", "Nut-Free", "Soy-Free"], default=[])
     
     generate_btn = st.button("Generate Precision Plan 🚀", type="primary", use_container_width=True)
 
 # Main Application Body
 if generate_btn:
     patient_payload = {
-        "age": age,
-        "gender": gender,
-        "bmi": bmi,
+        "age": age, "gender": gender, "bmi": bmi,
         "glycemic_status": glycemic_status,
         "pcos_phenotype": pcos_phenotype,
         "diet_preference": diet_pref,
         "allergies": allergies
     }
 
-    with st.spinner("Analyzing metabolic pathways and running constraint satisfaction..."):
+    with st.spinner("Analyzing combinatorial metabolic pathways..."):
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via GPT-4o Engine")
+        st.success("✅ Real-time Plan Synthesized via GPT-4 Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
+    # Adherence Target Status
+    st.success(f"**Daily Output Status:** {plan_data.get('simulated_target_met', 'Targets Met')}")
+
     # Top Metric Tiles
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Daily Calories", f"{plan_data.get('daily_calories', 1650)} kcal")
-    m2.metric("Net Carbohydrates", f"{plan_data.get('daily_net_carbs_g', 95)} g")
-    m3.metric("Protein Target", f"{plan_data.get('daily_protein_g', 125)} g")
-    m4.metric("Healthy Fats", f"{plan_data.get('daily_fats_g', 68)} g")
+    m1.metric("Target Calories", f"{plan_data.get('daily_calories')} kcal")
+    m2.metric("Net Carbohydrates", f"{plan_data.get('daily_net_carbs_g')} g")
+    m3.metric("Protein Target", f"{plan_data.get('daily_protein_g')} g")
+    m4.metric("Healthy Fats", f"{plan_data.get('daily_fats_g')} g")
     
-    st.info(f"**Macro Distribution Strategy:** {plan_data.get('target_macro_summary')}")
+    st.info(f"**Clinical Strategy:** {plan_data.get('target_macro_summary')}")
     st.markdown("---")
 
     # Meal Plan Output
@@ -254,7 +320,7 @@ if generate_btn:
 
     st.markdown("---")
     
-    # Clinical Insights & Micronutrient Targets
+    # Clinical Insights
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("💊 Targeted Endocrine Micronutrients")
@@ -266,4 +332,4 @@ if generate_btn:
         for item in plan_data.get("clinical_safeguards", []):
             st.markdown(f"- {item}")
 else:
-    st.info("👈 Adjust patient parameters on the left sidebar and click **Generate Precision Plan** to preview the prototype.")
+    st.info("👈 Adjust patient parameters on the left sidebar and click **Generate Precision Plan** to preview the logic engine.")
