@@ -258,7 +258,7 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="llama3-8b-8192", 
+            model="mixtral-8x7b-32768", # Updated to Groq's most stable, supported free model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
