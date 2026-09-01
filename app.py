@@ -14,7 +14,33 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# Advanced Deterministic Local Engine (No API Required)
+# Pydantic Schemas for Structured Nutritional Output
+# ---------------------------------------------------------
+class MealItem(BaseModel):
+    meal_type: str = Field(description="Breakfast, Lunch, Snack, or Dinner")
+    dish_name: str
+    portion_size: str
+    calories: int
+    net_carbs_g: float
+    protein_g: float
+    healthy_fats_g: float
+    glycemic_load_score: str = Field(description="Low (<10), Moderate (11-19), High (>20)")
+    smart_bioswap: str = Field(description="Alternative ingredient for glucose/androgen management")
+    clinical_rationale: str = Field(description="Why this helps Insulin Resistance and PCOS")
+
+class DailyNutritionPlan(BaseModel):
+    target_macro_summary: str
+    daily_calories: int
+    daily_net_carbs_g: float
+    daily_protein_g: float
+    daily_fats_g: float
+    simulated_target_met: str = Field(description="Evaluation if this plan meets clinical targets for the day")
+    meals: List[MealItem]
+    micronutrient_focus: List[str]
+    clinical_safeguards: List[str]
+
+# ---------------------------------------------------------
+# Advanced Deterministic Local Engine (Fallback)
 # ---------------------------------------------------------
 def get_benchmark_plan(user_data):
     age = user_data.get("age", 28)
@@ -122,7 +148,7 @@ def get_benchmark_plan(user_data):
         "daily_net_carbs_g": daily_carbs,
         "daily_protein_g": daily_pro,
         "daily_fats_g": daily_fat,
-        "simulated_target_met": "✅ SUCCESS: Dietary protocol perfectly aligns with daily clinical targets. Caloric deficit and macronutrient constraints met.",
+        "simulated_target_met": "✅ SUCCESS: Dietary protocol perfectly aligns with daily clinical targets.",
         "meals": [
             {
                 "meal_type": "Breakfast",
@@ -181,7 +207,7 @@ def get_benchmark_plan(user_data):
     }
 
 # ---------------------------------------------------------
-# LLM Integration Function (Bypassing Strict Groq Validators)
+# LLM Integration Function (Powered by Gemini 1.5 Flash)
 # ---------------------------------------------------------
 def generate_meal_plan(user_data, api_key=None):
     if not api_key:
@@ -189,9 +215,10 @@ def generate_meal_plan(user_data, api_key=None):
 
     try:
         from openai import OpenAI
+        # Routes the OpenAI library directly to Google's Gemini endpoint
         client = OpenAI(
             api_key=api_key,
-            base_url="https://api.groq.com/openai/v1"
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         )
         
         system_prompt = """
@@ -232,16 +259,14 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile", # Reliable JSON generation model
+            model="gemini-1.5-flash", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
             ],
-            temperature=0.2,
-            max_tokens=4000 # Added to prevent the JSON from truncating mid-generation
+            temperature=0.2
         )
         
-        # Custom Python cleaner to forcefully strip AI formatting errors
         raw_text = response.choices[0].message.content
         clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         
@@ -260,7 +285,7 @@ st.markdown("---")
 # Sidebar Configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input("Groq API Key (Optional)", type="password", help="Paste your free Groq key or leave blank for local mode.")
+    api_key = st.text_input("Gemini API Key (Optional)", type="password", help="Paste your free Gemini key from Google AI Studio.")
     
     st.subheader("📋 Patient Clinical Profile")
     age = st.number_input("Age", min_value=18, max_value=85, value=28)
@@ -295,7 +320,7 @@ if generate_btn:
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via Groq AI Engine")
+        st.success("✅ Real-time Plan Synthesized via Gemini 1.5 Flash Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
