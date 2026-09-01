@@ -258,13 +258,13 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="mixtral-8x7b-32768", # Updated to Groq's most stable, supported free model
+            model="openai/gpt-oss-20b", # Active, supported open-weights model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
             ],
             temperature=0.2
-            # Removed response_format to prevent Groq API crashes
+            # Removed response_format to ensure flawless parsing logic
         )
         
         # Custom Python cleaner to forcefully strip AI formatting errors
