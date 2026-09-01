@@ -239,7 +239,7 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b", # Updated to the active, free Groq flagship model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
@@ -297,7 +297,7 @@ if generate_btn:
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via Groq LLaMA 3.1 Engine")
+        st.success("✅ Real-time Plan Synthesized via Groq AI Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
