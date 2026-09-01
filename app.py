@@ -14,32 +14,6 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# Pydantic Schemas for Structured Nutritional Output
-# ---------------------------------------------------------
-class MealItem(BaseModel):
-    meal_type: str = Field(description="Breakfast, Lunch, Snack, or Dinner")
-    dish_name: str
-    portion_size: str
-    calories: int
-    net_carbs_g: float
-    protein_g: float
-    healthy_fats_g: float
-    glycemic_load_score: str = Field(description="Low (<10), Moderate (11-19), High (>20)")
-    smart_bioswap: str = Field(description="Alternative ingredient for glucose/androgen management")
-    clinical_rationale: str = Field(description="Why this helps Insulin Resistance and PCOS")
-
-class DailyNutritionPlan(BaseModel):
-    target_macro_summary: str
-    daily_calories: int
-    daily_net_carbs_g: float
-    daily_protein_g: float
-    daily_fats_g: float
-    simulated_target_met: str = Field(description="Evaluation if this plan meets clinical targets for the day")
-    meals: List[MealItem]
-    micronutrient_focus: List[str]
-    clinical_safeguards: List[str]
-
-# ---------------------------------------------------------
 # Advanced Deterministic Local Engine (No API Required)
 # ---------------------------------------------------------
 def get_benchmark_plan(user_data):
@@ -258,13 +232,13 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="openai/gpt-oss-20b", # Active, supported open-weights model
+            model="llama-3.3-70b-versatile", # Reliable JSON generation model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
             ],
-            temperature=0.2
-            # Removed response_format to ensure flawless parsing logic
+            temperature=0.2,
+            max_tokens=4000 # Added to prevent the JSON from truncating mid-generation
         )
         
         # Custom Python cleaner to forcefully strip AI formatting errors
