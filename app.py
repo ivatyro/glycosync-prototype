@@ -51,13 +51,11 @@ def get_benchmark_plan(user_data):
     glycemic = user_data.get("glycemic_status", "Prediabetes (HbA1c 5.7 - 6.4%)")
     allergies = user_data.get("allergies", [])
     
-    # 1. DYNAMIC BASAL METABOLIC CALCULATION (Age, BMI, Gender)
     base_cals = 1500 if gender == "Female" else 1800
     age_adj = -((age - 25) * 5) 
     bmi_adj = -250 if bmi >= 30 else (-100 if bmi >= 25 else 0) 
     target_cals = max(1200, int(base_cals + age_adj + bmi_adj)) 
     
-    # 2. GLYCEMIC STATUS LOGIC (T2D Elevated, Controlled, Prediabetes)
     if "Elevated" in glycemic:
         carb_ratio, pro_ratio, fat_ratio = 0.15, 0.35, 0.50
         gl_target = "Ultra-Low (GL < 5)"
@@ -75,7 +73,6 @@ def get_benchmark_plan(user_data):
     daily_pro = int((target_cals * pro_ratio) / 4)
     daily_fat = int((target_cals * fat_ratio) / 9)
 
-    # 3. ENDOCRINE & PCOS PHENOTYPE LOGIC (Female vs Male)
     micro_focus = []
     if gender == "Male":
         endo_rationale = "Zinc and Magnesium optimized to improve hepatic insulin clearance and protect testosterone from aromatization."
@@ -99,7 +96,6 @@ def get_benchmark_plan(user_data):
             micro_focus.append("Calcium and Vitamin D3 for bone density and baseline metabolic rate.")
             snack_rationale = "Provides sustained energy without disrupting endocrine balance."
 
-    # 4. DIETARY PREFERENCE & ALLERGY MATRICES
     bfast, lunch, snack, dinner = "Paneer Scramble", "Lentil Bowl", "Mixed Nuts", "Cauliflower Mash & Tofu"
     bfast_swap, lunch_swap = "Uses paneer instead of carbs.", "Uses lentils for fiber."
 
@@ -134,7 +130,7 @@ def get_benchmark_plan(user_data):
         bfast_swap = "High protein breakfast to blunt dawn phenomenon."
         lunch_swap = "Swaps white rice biryani for quinoa to reduce glycemic load by 40%."
 
-    else: # Vegetarian (High-Protein)
+    else: 
         bfast = "Spiced Tofu/Paneer Bhurji with Chia-Crusted Avocado"
         lunch = "Mediterranean Chickpea & Hemp Seed Bowl"
         dinner = "Cauliflower Rice with Palak Paneer (or Tofu)"
@@ -146,7 +142,6 @@ def get_benchmark_plan(user_data):
             bfast = bfast.replace("Paneer", "Tofu")
             dinner = dinner.replace("Paneer", "Tofu")
 
-    # 5. ASSEMBLE FINAL JSON PAYLOAD
     return {
         "target_macro_summary": f"Targeting {target_cals} kcal tailored for {age}yo {gender} (BMI: {bmi}). Focus: {carb_rationale} {endo_rationale}",
         "daily_calories": target_cals,
@@ -212,7 +207,7 @@ def get_benchmark_plan(user_data):
     }
 
 # ---------------------------------------------------------
-# LLM Integration Function (Powered by Free Groq API)
+# LLM Integration Function (Bypassing Strict Groq Validators)
 # ---------------------------------------------------------
 def generate_meal_plan(user_data, api_key=None):
     if not api_key:
@@ -220,7 +215,6 @@ def generate_meal_plan(user_data, api_key=None):
 
     try:
         from openai import OpenAI
-        # Diverts the OpenAI library to use Groq's super-fast free inference endpoints
         client = OpenAI(
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
@@ -231,23 +225,53 @@ def generate_meal_plan(user_data, api_key=None):
         Design multi-constraint meal plans specifically optimized for the Insulin Resistance Triad.
         
         Strict Guidelines:
-        1. AGGRESSIVE VARIETY: You MUST completely change the actual dishes, ingredients, and protein sources based on the patient's specific Glycemic Marker (Prediabetes vs Controlled vs Elevated T2D), Age, Gender, and PCOS phenotype. 
-        2. Culturally adapt dishes (e.g., South Indian variations) if the dietary preference allows. Strictly obey all allergy constraints (e.g., nut-free).
+        1. AGGRESSIVE VARIETY: Completely change dishes, ingredients, and protein sources based on Glycemic Marker, Age, Gender, and PCOS phenotype. 
+        2. Culturally adapt dishes (e.g., South Indian variations) if the dietary preference allows. Strictly obey allergy constraints.
         3. Keep total Net Carbs < 100g/day. Adjust calories dynamically based on Age and BMI.
-        4. Every meal MUST include a 'Smart Bio-Swap' and a clinical rationale perfectly tailored to their specific HbA1c and phenotype.
-        5. Return ONLY a valid JSON object matching the requested schema exactly. Include 'simulated_target_met' key evaluating the protocol.
+        4. Every meal MUST include a 'Smart Bio-Swap' and a clinical rationale.
+        5. Output ONLY raw JSON matching this schema exactly. DO NOT use markdown formatting (no ```json):
+        
+        {
+          "target_macro_summary": "string",
+          "daily_calories": 1500,
+          "daily_net_carbs_g": 90.0,
+          "daily_protein_g": 120.0,
+          "daily_fats_g": 60.0,
+          "simulated_target_met": "string",
+          "meals": [
+            {
+              "meal_type": "Breakfast",
+              "dish_name": "string",
+              "portion_size": "string",
+              "calories": 300,
+              "net_carbs_g": 15.0,
+              "protein_g": 30.0,
+              "healthy_fats_g": 15.0,
+              "glycemic_load_score": "Low",
+              "smart_bioswap": "string",
+              "clinical_rationale": "string"
+            }
+          ],
+          "micronutrient_focus": ["string"],
+          "clinical_safeguards": ["string"]
+        }
         """
         
         response = client.chat.completions.create(
-            model="openai/gpt-oss-20b", # Updated to the active, free Groq flagship model
+            model="llama3-8b-8192", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted plan for this profile:\n{json.dumps(user_data, indent=2)}"}
             ],
-            response_format={"type": "json_object"},
             temperature=0.2
+            # Removed response_format to prevent Groq API crashes
         )
-        return json.loads(response.choices[0].message.content), True
+        
+        # Custom Python cleaner to forcefully strip AI formatting errors
+        raw_text = response.choices[0].message.content
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        return json.loads(clean_text), True
     except Exception as e:
         st.warning(f"Live API Error ({str(e)}). Seamlessly switching to local constraint engine.")
         return get_benchmark_plan(user_data), False
@@ -301,10 +325,8 @@ if generate_btn:
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
-    # Adherence Target Status
     st.success(f"**Daily Output Status:** {plan_data.get('simulated_target_met', '✅ SUCCESS: Dietary protocol aligns with daily clinical targets.')}")
 
-    # Top Metric Tiles
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Target Calories", f"{plan_data.get('daily_calories')} kcal")
     m2.metric("Net Carbohydrates", f"{plan_data.get('daily_net_carbs_g')} g")
@@ -314,7 +336,6 @@ if generate_btn:
     st.info(f"**Clinical Strategy:** {plan_data.get('target_macro_summary')}")
     st.markdown("---")
 
-    # Meal Plan Output
     st.subheader("🍽️ Personalized Meal Architecture")
     for meal in plan_data.get("meals", []):
         with st.expander(f"**{meal.get('meal_type')}**: {meal.get('dish_name')} ({meal.get('calories')} kcal)", expanded=True):
@@ -329,7 +350,6 @@ if generate_btn:
 
     st.markdown("---")
     
-    # Clinical Insights
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("💊 Targeted Endocrine Micronutrients")
