@@ -409,7 +409,7 @@ def generate_meal_plan(user_data, api_key=None):
         """
         
         response = client.chat.completions.create(
-            model="gemini-1.5-flash",
+            model="gemini-3.6-flash",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a targeted nutritional plan."}
@@ -484,7 +484,7 @@ if generate_btn:
         plan_data, is_live = generate_meal_plan(patient_payload, api_key)
     
     if is_live:
-        st.success("✅ Real-time Plan Synthesized via Gemini 1.5 Flash Engine")
+        st.success("✅ Real-time Plan Synthesized via Gemini 3.6 Flash Engine")
     else:
         st.info("ℹ️ Running in Verified Clinical Benchmark Mode (Local Simulation Engine)")
 
