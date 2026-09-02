@@ -26,7 +26,7 @@ class MealItem(BaseModel):
     healthy_fats_g: float
     glycemic_load_score: str = Field(description="Low (<10), Moderate (11-19), High (>20)")
     smart_bioswap: str = Field(description="Smart Meal Swap: constraint-aware substitution maintaining similar macros and respecting all allergies/diet rules")
-    nutrition_rationale: str = Field(description="Nutritional reasoning for how this supports dietary balance (e.g., lower-glycemic food choices, protein-aware selection)")
+    nutrition_rationale: str = Field(description="Nutritional reasoning for how this supports metabolic profiles (e.g., lower-glycemic impact, protein-aware selection)")
 
 class DailyNutritionPlan(BaseModel):
     target_macro_summary: str
@@ -85,7 +85,7 @@ def categorize_constraints(user_data):
 
 def validate_and_score_plan(plan_data, constraints, is_fallback=False):
     """
-    Deterministic validation pipeline. Enforces exact macro math, checks hard constraints, 
+    Deterministic validation pipeline. Enforces macro math, checks hard constraints, 
     generates UI feedback strings, and calculates Fit Score.
     """
     validation_status = {
@@ -107,7 +107,7 @@ def validate_and_score_plan(plan_data, constraints, is_fallback=False):
     total_pro = 0.0
     total_fats = 0.0
     
-    # 1. Macro Math Check & Aggregation (Forces calorie consistency)
+    # 1. Macro Math Check & Aggregation
     for meal in plan_data.get("meals", []):
         p = float(meal.get("protein_g", 0))
         c = float(meal.get("net_carbs_g", 0))
@@ -117,11 +117,9 @@ def validate_and_score_plan(plan_data, constraints, is_fallback=False):
         derived_cals = int((p * 4) + (c * 4) + (f * 9))
         
         # Tolerance check
-        reported_cals = meal.get("calories", 0)
-        if abs(derived_cals - reported_cals) > 25:
+        if abs(derived_cals - meal.get("calories", 0)) > 25:
             validation_status["Macro consistency"] = "FAIL (Auto-Corrected)"
         
-        # Force the meal calorie value to exactly match the macro derivation
         meal["calories"] = derived_cals
         total_cals += derived_cals
         total_carbs += c
@@ -140,14 +138,10 @@ def validate_and_score_plan(plan_data, constraints, is_fallback=False):
             validation_status["Dietary restriction"] = "FAIL"
             validation_status["Meal-swap compatibility"] = "FAIL"
 
-    # Force the daily totals to be the EXACT sum of the validated meal components
     plan_data["daily_calories"] = total_cals
     plan_data["daily_net_carbs_g"] = round(total_carbs, 1)
     plan_data["daily_protein_g"] = round(total_pro, 1)
     plan_data["daily_fats_g"] = round(total_fats, 1)
-    
-    # Re-write target summary so LLM doesn't output contradictory hardcoded numbers
-    plan_data["target_macro_summary"] = f"Nutrition Strategy: {total_cals} kcal daily total. Protein-aware, constraint-aware food selection."
     
     if abs(total_cals - target["calories"]) > 250:
         validation_status["Calorie consistency"] = "FAIL"
@@ -161,10 +155,10 @@ def validate_and_score_plan(plan_data, constraints, is_fallback=False):
     elif is_fallback:
         trade_offs.append("Cuisine preference partially relaxed to ensure macro stability in local mode.")
 
-    # Generate "Why this plan?" UI Data (Using the dynamically verified total_cals)
+    # Generate "Why this plan?" UI Data
     reasons = [
         f"✓ {hard['diet_preference']} preference strictly preserved.",
-        f"✓ Daily total of {total_cals} kcal verified.",
+        f"✓ Target of ~{target['calories']} kcal algorithmically verified.",
         f"✓ Protein-aware meal planning prioritized ({plan_data['daily_protein_g']}g)."
     ]
     if hard["allergies"]:
@@ -202,33 +196,33 @@ def get_benchmark_plan(user_data):
         carb_rationale = "Carbohydrate restriction to support lower-glycemic meal selection."
     elif "Controlled" in glycemic:
         gl_target = "Low (GL ~ 6)"
-        carb_rationale = "Moderate complex carbohydrates for balanced meal architecture."
+        carb_rationale = "Moderate complex carbohydrates to support stable blood glucose."
     else: 
         gl_target = "Low (GL ~ 8)"
-        carb_rationale = "Controlled glycemic load to support personalized nutrition preferences."
+        carb_rationale = "Controlled glycemic load to support healthy metabolic function."
 
     micro_focus = []
     if gender == "Male":
-        nutrition_rationale = "Zinc and Magnesium for nutrition-focused support."
-        micro_focus.append("Targeted Zinc (30mg) for protein-aware meal planning.")
-        snack_rationale = "Supports overall dietary balance."
+        nutrition_rationale = "Zinc and Magnesium optimized to support healthy metabolic clearance and function."
+        micro_focus.append("Targeted Zinc (30mg) for nutrition-focused metabolic support.")
+        snack_rationale = "Supports baseline energy needs."
     else:
         if pcos == "Insulin-Resistant PCOS":
-            nutrition_rationale = "Inositol-rich food sources for balanced meal architecture."
-            micro_focus.append("Focus on Myo-Inositol & D-Chiro Inositol (40:1 ratio) compatible foods.")
-            snack_rationale = "Provides a balanced combination of protein, fiber and dietary fats."
+            nutrition_rationale = "Inositol integration to support nutritional needs associated with insulin-resistant profiles."
+            micro_focus.append("Myo-Inositol & D-Chiro Inositol (40:1 ratio) focus via specific foods.")
+            snack_rationale = "Provides satiation without rapid glucose spikes."
         elif pcos == "Inflammatory PCOS":
-            nutrition_rationale = "Omega-3s and antioxidants to support overall dietary balance."
+            nutrition_rationale = "Omega-3s and antioxidants to support a healthy inflammatory response."
             micro_focus.append("Omega-3s (EPA/DHA) and Curcuminoids via diet.")
-            snack_rationale = "Focuses on balanced food matrices."
+            snack_rationale = "Focuses on anti-inflammatory food matrices."
         elif pcos == "Adrenal PCOS":
-            nutrition_rationale = "Balanced micronutrients to support general dietary needs."
-            micro_focus.append("Magnesium-rich foods for nutrition-focused support.")
-            snack_rationale = "Supports lower-glycemic food choices."
+            nutrition_rationale = "Adaptogenic support (Vitamin C, Magnesium) to support healthy stress responses."
+            micro_focus.append("Magnesium-rich foods to support baseline stress levels.")
+            snack_rationale = "Stabilizes energy to prevent secondary crashes."
         else:
-            nutrition_rationale = "General personalized nutrition support."
+            nutrition_rationale = "General metabolic support for female endocrine homeostasis."
             micro_focus.append("Calcium and Vitamin D3 focus.")
-            snack_rationale = "Provides balanced energy sources."
+            snack_rationale = "Provides sustained energy without disrupting endocrine balance."
 
     bfast, lunch, snack, dinner = "Paneer Scramble", "Lentil Bowl", "Mixed Nuts", "Cauliflower Mash & Tofu"
     bfast_swap, lunch_swap = "Uses paneer instead of higher-carb options.", "Uses lentils for fiber support."
@@ -241,8 +235,8 @@ def get_benchmark_plan(user_data):
         lunch = "Chettinad Pepper Chicken with Foxtail Millet"
         dinner = "Meen Kuzhambu (Fish Curry) with Quinoa & Sautéed Greens"
         snack = "Roasted Makhana (Fox Nuts) & Spiced Buttermilk"
-        bfast_swap = "Swaps white rice batter for protein-rich egg appam for balanced meal architecture."
-        lunch_swap = "Swaps white rice for Foxtail Millet for lower-glycemic food choices while maintaining authentic South Indian flavor."
+        bfast_swap = "Swaps white rice batter for protein-rich egg appam to stabilize morning energy."
+        lunch_swap = "Swaps white rice for Foxtail Millet to lower GL while maintaining authentic South Indian flavor."
         if is_dairy_free: snack = "Roasted Makhana & Black Tea"
         
     elif hard["diet_preference"] == "Vegan":
@@ -262,7 +256,7 @@ def get_benchmark_plan(user_data):
         dinner = "Zucchini Noodles with Egg Drop Soup"
         snack = "Roasted Pumpkin Seeds"
         bfast_swap = "Protein-dense breakfast to support morning satiation."
-        lunch_swap = "Swaps white rice biryani for quinoa to support balanced meal architecture."
+        lunch_swap = "Swaps white rice biryani for quinoa to reduce glycemic load."
 
     else: 
         bfast = "Spiced Tofu/Paneer Bhurji with Chia-Crusted Avocado"
@@ -277,7 +271,7 @@ def get_benchmark_plan(user_data):
             dinner = dinner.replace("Paneer", "Tofu")
 
     raw_plan = {
-        "target_macro_summary": f"Placeholder summary.", # Will be overwritten during validation
+        "target_macro_summary": f"Targeting {target['calories']} kcal tailored for {user_data.get('age', 28)}yo {gender} (BMI: {user_data.get('bmi', 29.5)}). Focus: {carb_rationale} {nutrition_rationale}",
         "daily_calories": target["calories"],
         "daily_net_carbs_g": target["net_carbs_g"],
         "daily_protein_g": target["protein_g"],
@@ -294,7 +288,7 @@ def get_benchmark_plan(user_data):
                 "healthy_fats_g": int(target["fats_g"] * 0.30),
                 "glycemic_load_score": gl_target,
                 "smart_bioswap": bfast_swap,
-                "nutrition_rationale": f"High morning protein supports balanced meal architecture. {carb_rationale}"
+                "nutrition_rationale": f"High morning protein supports steady energy. {carb_rationale}"
             },
             {
                 "meal_type": "Lunch",
@@ -306,7 +300,7 @@ def get_benchmark_plan(user_data):
                 "healthy_fats_g": int(target["fats_g"] * 0.35),
                 "glycemic_load_score": gl_target,
                 "smart_bioswap": lunch_swap,
-                "nutrition_rationale": "Sustained amino acid release for overall dietary balance."
+                "nutrition_rationale": "Sustained amino acid release prevents afternoon energy crashes."
             },
             {
                 "meal_type": "Snack",
@@ -330,13 +324,13 @@ def get_benchmark_plan(user_data):
                 "healthy_fats_g": int(target["fats_g"] * 0.20),
                 "glycemic_load_score": gl_target,
                 "smart_bioswap": "Swaps starchy root vegetables for complex fiber matrices.",
-                "nutrition_rationale": f"Provides a balanced dinner composition. {nutrition_rationale}"
+                "nutrition_rationale": f"Prioritizes lighter metabolic load overnight. {nutrition_rationale}"
             }
         ],
         "micronutrient_focus": micro_focus,
         "nutrition_safeguards": [
             "Monitor hydration to support general metabolic functions.",
-            "Ensure consistency in meal timing for overall dietary balance."
+            "Ensure consistency in meal timing for optimal blood sugar support."
         ]
     }
     
@@ -360,9 +354,8 @@ def generate_meal_plan(user_data, api_key=None):
         )
         
         system_prompt = f"""
-        You are GlycoSync, a nutrition decision support AI generating meal plans for personalized dietary profiles.
-        Do NOT make medical claims, diagnose, or prescribe treatments. Frame all logic around neutral nutritional support (e.g., "lower-glycemic food choices", "balanced meal architecture", "protein-aware selection").
-        Do NOT use terms like "reverse", "treat", "attenuate", "lipolysis", "insulin sensitivity", or "clearance".
+        You are GlycoSync, a nutrition decision support AI generating meal plans for metabolic profiles.
+        Do NOT make medical claims, diagnose, or prescribe treatments. Frame all logic around nutritional support.
         
         PRIORITY 1: HARD CONSTRAINTS (NEVER VIOLATE)
         - Diet: {constraints['HARD']['diet_preference']}
@@ -379,7 +372,7 @@ def generate_meal_plan(user_data, api_key=None):
         1. AGGRESSIVE VARIETY: Provide varied dishes based on the metabolic profile.
         2. Culturally adapt dishes to the Soft Preference if compatible with Hard Constraints.
         3. Every meal MUST include a 'Smart Meal Swap' (a constraint-aware substitution maintaining similar macros and respecting ALL hard constraints) and a nutrition rationale.
-        4. Math Check: Ensure daily_calories exactly equals the sum of meal calories. Ensure each meal's calories roughly equal (Protein*4 + Net Carbs*4 + Fat*9).
+        4. Math Check: Ensure meal calories roughly equal (Protein*4 + Carbs*4 + Fat*9).
         5. Output ONLY raw JSON matching the schema. DO NOT use markdown formatting (no ```json):
         
         {{
